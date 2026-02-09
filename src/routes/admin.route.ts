@@ -4,10 +4,12 @@ import { adminAuth } from "../middleware/adminAuth";
 import { getAllOrders } from "../controllers/adminOrders.controller";
 
 const router = Router();
+router.get("/orders", authMiddleware, getAllOrders);
 
-router.get("/orders", authMiddleware, async (req, res) => {
-  res.json({ message: "Protected orders route works!" });
-});
+
+// router.get("/orders", authMiddleware, async (req, res) => {
+//   res.json({ message: "Protected orders route works!" });
+// });
 
 // router.get("/orders", getAllOrders);
 
