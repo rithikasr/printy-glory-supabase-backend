@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { Request, Response } from "express";
 import { Product } from "../models/Product";
+import { Order } from "../models/Order";
 
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -71,6 +72,32 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
       });
 
       console.log("✅ Stock decreased for product:", productId);
+    }
+     try {
+      const product = await Product.findById(productId);
+
+      if (!product) {
+        console.log("⚠️ Product not found during order save");
+      } else {
+        await Order.create({
+          stripe_session_id: session.id,
+          customer_email: session.customer_details.email,
+          total_amount: session.amount_total / 100,
+          currency: session.currency,
+          payment_status: session.payment_status,
+          order_items: [
+            {
+              product_name: product.name,
+              quantity: 1,
+              unit_price: product.price,
+            },
+          ],
+        });
+
+        console.log("🧾 Order saved successfully");
+      }
+    } catch (orderErr) {
+      console.error("❌ Failed to save order:", orderErr);
     }
   }
 

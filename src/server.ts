@@ -8,14 +8,10 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 
-import adminRoutes from "./routes/admin.route";
-import productRoutes from "./routes/product.route";
-import authRoutes from "./routes/auth.route";
-import forgotRoutes from "./routes/forgot.route";
-import paymentRoutes from "./routes/payment.routes";
+
 import { stripeWebhookHandler } from "./controllers/payment.controller";
 
-import { authMiddleware } from "./middleware/auth";
+import commonRouter from "./routes/route";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,12 +30,7 @@ app.use(express.json());
 app.use(cors({ origin: "*" }));
 
 // --------------------- ROUTES ---------------------
-app.use("/api/payment", paymentRoutes);
-app.use("/auth", authRoutes);
-app.use("/auth", forgotRoutes);
-
-app.use("/admin", authMiddleware, adminRoutes);
-app.use("/api", authMiddleware, productRoutes);
+app.use(commonRouter);
 
 // --------------------- DATABASE + START ---------------------
 connectDB().then(() => {
