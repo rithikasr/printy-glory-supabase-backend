@@ -6,6 +6,7 @@ import forgotRoutes from "./forgot.route";
 import paymentRoutes from "./payment.routes";
 import { authMiddleware } from "../middleware/auth";
 import orderRoutes from "./order.route";
+import cartRoutes from "./cart.route";
 
 const commonRouter = express.Router();
 
@@ -15,6 +16,7 @@ commonRouter.use("/api/payment", paymentRoutes)
             .use("/auth", forgotRoutes)
             .use("/admin", authMiddleware, adminRoutes)
             .use("/api", authMiddleware, productRoutes)
-            .use("/api/orders", orderRoutes);
+            .use("/api/orders", orderRoutes)
+            .use("/api", authMiddleware, cartRoutes);
 
 export default commonRouter;
