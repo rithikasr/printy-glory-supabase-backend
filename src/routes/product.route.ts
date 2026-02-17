@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { 
+import {
   createProduct,
   getProducts,
   getProductById,
@@ -7,16 +7,17 @@ import {
   deleteProduct
 } from "../controllers/product.controller";
 import { upload } from "../middleware/upload";
+import { authMiddleware } from "../middleware/auth";
 
 const router = Router();
 
-// CRUD Routes
-// router.post("/products", createProduct);
-router.post("/products", upload.single("image"), createProduct);
+// Public routes (no auth required)
 router.get("/products", getProducts);
 router.get("/products/:id", getProductById);
-router.put("/products/:id", upload.single("image"), updateProduct);
-// router.put("/products/:id", updateProduct);
-router.delete("/products/:id", deleteProduct);
+
+// Protected routes (auth required for admin operations)
+router.post("/products", authMiddleware, upload.single("image"), createProduct);
+router.put("/products/:id", authMiddleware, upload.single("image"), updateProduct);
+router.delete("/products/:id", authMiddleware, deleteProduct);
 
 export default router;

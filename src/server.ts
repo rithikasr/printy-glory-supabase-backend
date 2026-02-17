@@ -1,5 +1,7 @@
-
-
+// Force Node.js to use Google DNS for MongoDB connections
+// This fixes DNS resolution issues with local DNS servers
+import dns from "dns";
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 import * as dotenv from "dotenv";
 import { connectDB } from "./config/mongodb";
@@ -22,6 +24,15 @@ app.post(
   express.raw({ type: "application/json" }),
   stripeWebhookHandler
 );
+
+// --------------------- URL NORMALIZATION ---------------------
+// Fixes "Cannot GET //api/products" caused by double slashes in frontend requests
+app.use((req, res, next) => {
+  if (req.url.includes("//")) {
+    req.url = req.url.replace(/\/{2,}/g, "/");
+  }
+  next();
+});
 
 // --------------------- JSON BODY PARSER (AFTER WEBHOOK) ---------------------
 app.use(express.json());
@@ -64,13 +75,13 @@ export default app;
 //   webhookRoutes          // contains express.raw()
 // );
 
-// app.use(express.json());   
+// app.use(express.json());
 
 
 // //  Allow all frontend origins (required for localhost & dev tunnels)
 // app.use(cors({ origin: "*" }));
 // app.use("/api", paymentRoutes);
-// app.use("/webhooks", webhookRoutes); 
+// app.use("/webhooks", webhookRoutes);
 
 
 // app.use("/auth", authRoutes);
@@ -110,7 +121,7 @@ export default app;
 // app.use("/webhooks", webhookRoutes); // raw body
 // app.use(express.json());            // now JSON parser
 // app.use("/admin", adminRoutes);     // admin routes
-// app.use("/api", productRoutes); 
+// app.use("/api", productRoutes);
 
 // // app.use(
 // //   "/webhooks",
