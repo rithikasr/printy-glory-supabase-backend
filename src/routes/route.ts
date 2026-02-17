@@ -7,16 +7,23 @@ import paymentRoutes from "./payment.routes";
 import { authMiddleware } from "../middleware/auth";
 import orderRoutes from "./order.route";
 import cartRoutes from "./cart.route";
+import phoneModelRoutes from "./phoneModel.route";
+import pricingRoutes from "./pricing.route";
 
 const commonRouter = express.Router();
 
-commonRouter.use("/api/payment", paymentRoutes)
-            .use("/webhooks", express.raw({ type: "application/json" }), paymentRoutes)
-            .use("/auth", authRoutes)
-            .use("/auth", forgotRoutes)
-            .use("/admin", authMiddleware, adminRoutes)
-            .use("/api", authMiddleware, productRoutes)
-            .use("/api/orders", orderRoutes)
-            .use("/api", authMiddleware, cartRoutes);
+// Public routes (no auth required)
+commonRouter.use("/auth", authRoutes)
+    .use("/auth", forgotRoutes)
+    .use("/api", productRoutes) // Products are now public for browsing
+    .use("/api/phone-models", phoneModelRoutes) // Phone model requests
+    .use("/api", pricingRoutes); // Pricing routes (public GET, protected admin endpoints)
+
+// Protected routes (auth required)
+commonRouter.use("/api/payment", authMiddleware, paymentRoutes) // Auth required for payment
+    .use("/webhooks", express.raw({ type: "application/json" }), paymentRoutes)
+    .use("/admin", authMiddleware, adminRoutes)
+    .use("/api/orders", orderRoutes) // Already has auth middleware inside
+    .use("/api", authMiddleware, cartRoutes); // Auth required for cart
 
 export default commonRouter;
