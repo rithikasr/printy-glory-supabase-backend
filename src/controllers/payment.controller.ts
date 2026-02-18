@@ -170,6 +170,16 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
       if (!product) {
         console.log("⚠️ Product not found during order save");
       } else {
+        const { designImage, phoneModel, caseColor, shirtType, size, color } = session.metadata || {};
+
+        const customizationDetails: any = {};
+        if (phoneModel) customizationDetails.phoneModel = phoneModel;
+        if (caseColor) customizationDetails.caseColor = caseColor;
+        if (shirtType) customizationDetails.shirtType = shirtType;
+        if (size) customizationDetails.size = size;
+        if (color) customizationDetails.color = color;
+        if (session.metadata?.customDesign) customizationDetails.isCustomDesign = true;
+
         await Order.create({
           stripe_session_id: session.id,
           customer_email: session.customer_details.email,
@@ -180,7 +190,9 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
             {
               product_name: product.name,
               quantity: 1,
-              unit_price: product.price,
+              unit_price: session.amount_total / 100, // Use the actual paid amount
+              design_image: designImage,
+              customization_details: customizationDetails
             },
           ],
         });
