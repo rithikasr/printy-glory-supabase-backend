@@ -12,6 +12,7 @@ import phoneModelRoutes from "./phoneModel.route";
 import pricingRoutes from "./pricing.route";
 import uploadRoutes from "./upload.route";
 import contactRoutes from "./contact.route";
+import deviceModelRoutes from "./deviceModel.route";
 
 const commonRouter = express.Router();
 
@@ -23,7 +24,8 @@ commonRouter.use("/auth", authRoutes)
     .use("/api/phone-models", phoneModelRoutes) // Phone model requests
     .use("/api", pricingRoutes) // Pricing routes (public GET, protected admin endpoints)
     .use("/api/upload", uploadRoutes) // Upload routes
-    .use("/api/contact", contactRoutes); // Public contact form submission
+    .use("/api/contact", contactRoutes) // Public contact form submission
+    .use("/api/device-models", deviceModelRoutes); // Dynamic device frames
 
 // Protected routes (auth required)
 commonRouter.use("/api/payment", authMiddleware, paymentRoutes) // Auth required for payment
