@@ -5,7 +5,8 @@ import {
   addToCart,
   moveToSaveForLater,
   moveBackToCart,
-  removeFromCart
+  removeFromCart,
+  removeFromSavedForLater
 } from "../controllers/cart.controller";
 
 const router = Router();
@@ -16,5 +17,6 @@ router.post("/cart/add", addToCart);
 router.post("/cart/save-for-later", moveToSaveForLater);
 router.post("/cart/move-to-cart", moveBackToCart);
 router.post("/cart/remove", removeFromCart);
+router.post("/cart/remove-saved", removeFromSavedForLater);
 
 export default router;
