@@ -2,6 +2,9 @@ import Stripe from "stripe";
 import { Request, Response } from "express";
 import { Product } from "../models/Product";
 import { Order } from "../models/Order";
+import { PendingDesign } from "../models/PendingDesign";
+import { Cart } from "../models/Cart";
+
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -13,7 +16,7 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
   try {
     console.log("📦 Checkout request received:", req.body);
 
-    const { productId, price: customPrice, metadata: customMetadata } = req.body;
+    const { productId, price: customPrice, metadata: customMetadata, designElements } = req.body;
 
     if (!productId) {
       return res.status(400).json({ success: false, message: "Product ID is required" });
@@ -72,6 +75,16 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
     });
 
     console.log("✅ Stripe session created:", session.id);
+
+    // Save design elements to a temp collection (too large for Stripe metadata)
+    if (designElements && Array.isArray(designElements) && designElements.length > 0) {
+      await PendingDesign.create({
+        stripe_session_id: session.id,
+        design_elements: designElements,
+      });
+      console.log(`📐 Saved ${designElements.length} design element(s) for session ${session.id}`);
+    }
+
     res.json({ success: true, url: session.url });
   } catch (error: any) {
     console.error("❌ Checkout error:", error.message);
@@ -99,6 +112,7 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
         quantity: number;
         customization?: {
           designImageUrl?: string;
+          designElements?: any[];
           productType?: string;
           phoneModel?: string;
           caseColor?: string;
@@ -167,6 +181,7 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
     // Using item_N_* keys avoids the 500-char JSON truncation problem.
     const sessionMetadata: Record<string, string> = {
       source: "cart_checkout",
+      userId: (req as any).user?.id || "",
       item_count: String(cartItems.length),
     };
 
@@ -194,6 +209,24 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
     });
 
     console.log("✅ Cart Stripe session created:", session.id);
+
+    // Collect all design elements from all cart items, keyed by index
+    const allDesignElements: any[] = [];
+    cartItems.forEach((item, idx) => {
+      const elems = item.customization?.designElements;
+      if (elems && Array.isArray(elems) && elems.length > 0) {
+        allDesignElements.push({ itemIndex: idx, elements: elems });
+      }
+    });
+
+    if (allDesignElements.length > 0) {
+      await PendingDesign.create({
+        stripe_session_id: session.id,
+        design_elements: allDesignElements,
+      });
+      console.log(`📐 Saved design elements for ${allDesignElements.length} cart item(s), session ${session.id}`);
+    }
+
     res.json({ success: true, url: session.url });
   } catch (error: any) {
     console.error("❌ Cart checkout error:", error.message);
@@ -342,6 +375,28 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
         }
       }
 
+      // ── Retrieve saved design elements from PendingDesign ──
+      const pendingDesign = await PendingDesign.findOne({ stripe_session_id: session.id });
+      if (pendingDesign && pendingDesign.design_elements?.length > 0) {
+        if (metadata.source === "cart_checkout") {
+          // Cart: design_elements is [{itemIndex, elements}, ...]
+          for (const entry of pendingDesign.design_elements as any[]) {
+            const idx = entry.itemIndex;
+            if (orderItems[idx]) {
+              orderItems[idx].design_elements = entry.elements;
+            }
+          }
+        } else {
+          // Buy Now: design_elements is the flat array of elements
+          if (orderItems.length > 0) {
+            orderItems[0].design_elements = pendingDesign.design_elements;
+          }
+        }
+        // Clean up
+        await PendingDesign.deleteOne({ _id: pendingDesign._id });
+        console.log("📐 Design elements attached to order and pending record cleaned up");
+      }
+
       // Save the order
       await Order.create({
         stripe_session_id: session.id,
@@ -353,6 +408,15 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
       });
 
       console.log(`✅ Order saved — ${orderItems.length} item(s), email: ${session.customer_details?.email}`);
+
+      // ── NEW: Clear the user's cart if this was a cart checkout ──
+      if (metadata.source === "cart_checkout" && metadata.userId) {
+        await Cart.findOneAndUpdate(
+          { user: metadata.userId },
+          { $set: { cartItems: [] } }
+        );
+        console.log(`🧹 Cart cleared for user: ${metadata.userId}`);
+      }
 
     } catch (err) {
       console.error("❌ Failed to save order:", err);

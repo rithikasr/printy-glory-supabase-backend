@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 const customizationSchema = new mongoose.Schema(
   {
     designImageUrl: { type: String, default: null },  // Cloudinary URL of captured design
+    designElements: { type: [mongoose.Schema.Types.Mixed], default: [] }, // individual elements: [{type, content, x, y, width, height, ...}]
     productType: { type: String, default: null },      // 'phone-case' | 't-shirt'
     phoneModel: { type: String, default: null },       // e.g. 'iPhone 15 Pro Max'
     caseColor: { type: String, default: null },        // hex colour for phone case

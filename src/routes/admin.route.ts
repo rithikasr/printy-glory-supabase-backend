@@ -1,22 +1,11 @@
 import { Router } from "express";
-import { authMiddleware } from "../middleware/auth";
-import { adminAuth } from "../middleware/adminAuth";
 import { getAllOrders } from "../controllers/adminOrders.controller";
+import { makeAdmin } from "../controllers/auth.controller";
 
 const router = Router();
-router.get("/orders", authMiddleware, getAllOrders);
 
-
-// router.get("/orders", authMiddleware, async (req, res) => {
-//   res.json({ message: "Protected orders route works!" });
-// });
-
-// router.get("/orders", getAllOrders);
-
-
-// router.get("/orders", auth, adminAuth, getAllOrders); //authorization
-
-
-// router.get("/admin/orders", auth, adminAuth, getAllOrders);
+// Note: authMiddleware and adminMiddleware are applied in route.ts to all /admin routes
+router.get("/orders", getAllOrders);
+router.patch("/make-admin", makeAdmin);
 
 export default router;
