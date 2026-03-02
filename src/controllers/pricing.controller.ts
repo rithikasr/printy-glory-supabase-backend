@@ -53,9 +53,9 @@ export const getPricingByType = async (req: Request, res: Response) => {
 // CREATE or UPDATE phone case pricing (Admin only)
 export const setPhoneCasePricing = async (req: Request, res: Response) => {
     try {
-        const { basePrice } = req.body;
+        const { basePrice, perElementPrice, maxElementsForBasePrice } = req.body;
 
-        if (!basePrice || basePrice < 0) {
+        if (basePrice === undefined || basePrice < 0) {
             return res.status(400).json({
                 success: false,
                 message: "Valid base price is required"
@@ -67,6 +67,8 @@ export const setPhoneCasePricing = async (req: Request, res: Response) => {
             {
                 productType: 'phone-case',
                 basePrice,
+                perElementPrice: perElementPrice || 0,
+                maxElementsForBasePrice: maxElementsForBasePrice || 0,
                 isActive: true
             },
             {
@@ -174,6 +176,8 @@ export const initializeDefaultPricing = async (req: Request, res: Response) => {
             {
                 productType: 'phone-case',
                 basePrice: 499,
+                perElementPrice: 50, // Default ₹50 per additional element
+                maxElementsForBasePrice: 3, // Default 3 elements included in base price
                 isActive: true
             },
             { upsert: true, new: true }

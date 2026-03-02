@@ -11,7 +11,9 @@ const customizationSchema = new mongoose.Schema(
     shirtType: { type: String, default: null },        // e.g. 'half-sleeve'
     shirtSize: { type: String, default: null },        // e.g. 'L'
     shirtColor: { type: String, default: null },       // hex colour for t-shirt
-    hasCustomDesign: { type: Boolean, default: false }
+    hasCustomDesign: { type: Boolean, default: false },
+    price: { type: Number, default: null }             // Snapshot of calculated price for custom items
+
   },
   { _id: false }
 );

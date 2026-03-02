@@ -17,6 +17,16 @@ const productPricingSchema = new mongoose.Schema(
             default: 0
         },
 
+        // New fields for dynamic pricing based on elements
+        perElementPrice: {
+            type: Number,
+            default: 0
+        },
+        maxElementsForBasePrice: {
+            type: Number,
+            default: 0 // If say 3, then first 3 elements are free, 4th onwards cost perElementPrice
+        },
+
         // T-shirt type pricing (only for t-shirt productType)
         tshirtTypes: [
             {

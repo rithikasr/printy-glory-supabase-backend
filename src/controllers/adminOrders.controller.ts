@@ -16,6 +16,29 @@ export const getAllOrders = async (_req: Request, res: Response) => {
   }
 };
 
+export const getOrderById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const order = await Order.findById(id);
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+    res.json({ success: true, order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching order" });
+  }
+};
+
+export const updateOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { payment_status } = req.body;
+    const order = await Order.findByIdAndUpdate(id, { payment_status }, { new: true });
+    res.json({ success: true, order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error updating order" });
+  }
+};
+
 
 
 // import { Request, Response } from "express";

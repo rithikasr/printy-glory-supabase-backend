@@ -4,7 +4,7 @@ import { PhoneModelRequest } from "../models/PhoneModelRequest";
 
 export const createDeviceModel = async (req: Request, res: Response) => {
     try {
-        const { type, brand, modelName, frameWidth, frameHeight, printArea, camera, requestId } = req.body;
+        const { type, brand, modelName, frameWidth, frameHeight, printArea, cameras, requestId } = req.body;
 
         const newModel = await DeviceModel.create({
             type,
@@ -13,7 +13,7 @@ export const createDeviceModel = async (req: Request, res: Response) => {
             frameWidth,
             frameHeight,
             printArea,
-            camera,
+            cameras,
             available: true,
         });
 

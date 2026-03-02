@@ -4,6 +4,7 @@ import { Product } from "../models/Product";
 import { Order } from "../models/Order";
 import { PendingDesign } from "../models/PendingDesign";
 import { Cart } from "../models/Cart";
+import { sendOrderConfirmationEmail } from "../utils/emailService";
 
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -70,8 +71,8 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
         },
       ],
       metadata: sessionMetadata,
-      success_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/success`,
-      cancel_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/cart`,
+      success_url: `${process.env.FRONTEND_URL || "http://localhost:8080"}/success`,
+      cancel_url: `${process.env.FRONTEND_URL || "http://localhost:8080"}/cart`,
     });
 
     console.log("✅ Stripe session created:", session.id);
@@ -408,6 +409,25 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
       });
 
       console.log(`✅ Order saved — ${orderItems.length} item(s), email: ${session.customer_details?.email}`);
+
+      // ── Send Order Confirmation Email ──
+      const customerEmail = session.customer_details?.email;
+      if (customerEmail) {
+        try {
+          await sendOrderConfirmationEmail({
+            email: customerEmail,
+            orderId: session.id.slice(-10).toUpperCase(),
+            productName: orderItems.map((i: any) => i.product_name).join(", "),
+            totalAmount: session.amount_total,
+            currency: session.currency,
+            designPreview: orderItems[0]?.design_image,
+            shippingDetails: session.shipping_details || session.customer_details,
+          });
+          console.log(`📧 Confirmation email sent to: ${customerEmail}`);
+        } catch (emailErr) {
+          console.error("⚠️ Order email failed to send, but order was saved:", emailErr);
+        }
+      }
 
       // ── NEW: Clear the user's cart if this was a cart checkout ──
       if (metadata.source === "cart_checkout" && metadata.userId) {
