@@ -11,8 +11,8 @@ const transporter = nodemailer.createTransport({
     // Force IPv4 as Render often has trouble with IPv6 to Gmail
     // @ts-ignore
     family: 4,
-    connectionTimeout: 10000, // 10 seconds
-});
+    connectionTimeout: 10000,
+} as any);
 
 export const sendOrderConfirmationEmail = async (orderData: {
     email: string;
