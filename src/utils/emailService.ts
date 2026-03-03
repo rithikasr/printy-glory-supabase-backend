@@ -8,6 +8,10 @@ const transporter = nodemailer.createTransport({
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
     },
+    // Force IPv4 as Render often has trouble with IPv6 to Gmail
+    // @ts-ignore
+    family: 4,
+    connectionTimeout: 10000, // 10 seconds
 });
 
 export const sendOrderConfirmationEmail = async (orderData: {
@@ -67,11 +71,14 @@ export const sendOrderConfirmationEmail = async (orderData: {
     };
 
     try {
+        console.log(`📧 Attempting to send email via SMTP: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
+        console.log(`📧 From: ${process.env.FROM_EMAIL}, To: ${email}`);
         const info = await transporter.sendMail(mailOptions);
         console.log('✅ Order confirmation email sent:', info.messageId);
         return info;
     } catch (error) {
-        console.error('❌ Error sending order confirmation email:', error);
+        console.error('❌ SMTP Error encountered:');
+        console.error(error);
         throw error;
     }
 };

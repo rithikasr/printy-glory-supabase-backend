@@ -22,9 +22,11 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({ origin: "*" }));
 
 // ---------------------- STRIPE WEBHOOK FIRST ----------------------
+// Stripe webhooks need the raw body for signature verification.
+// We set a large limit (50mb) to handle complex checkout sessions.
 app.post(
   "/api/payment/stripe-webhook",
-  express.raw({ type: "application/json" }),
+  express.raw({ type: "application/json", limit: "50mb" }),
   stripeWebhookHandler
 );
 

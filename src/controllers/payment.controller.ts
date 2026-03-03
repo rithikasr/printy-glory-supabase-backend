@@ -133,17 +133,23 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       return res.status(500).json({ success: false, message: "Payment system not configured" });
     }
 
-    // Build Stripe line items
+    // Build Stripe line items and metadata simultaneously to ensure index alignment
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    const sessionMetadata: Record<string, string> = {
+      source: "cart_checkout",
+      userId: (req as any).user?.id || "",
+    };
+    const allDesignElements: any[] = [];
+    let validItemCount = 0;
 
     for (const item of cartItems) {
       const price = Number(item.price);
       if (!price || price < 50) {
-        console.warn(`⚠️  Skipping item ${item.productId} — invalid price (${price})`);
+        console.warn(`⚠️ Skipping item ${item.productId} — invalid price (${price})`);
         continue;
       }
 
-      // Build a human-readable product description from customization
+      // 1. Build line item
       const c = item.customization;
       const descParts: string[] = [];
       if (c?.phoneModel) descParts.push(`Model: ${c.phoneModel}`);
@@ -153,41 +159,21 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       if (c?.shirtColor) descParts.push(`Colour: ${c.shirtColor}`);
       if (c?.hasCustomDesign) descParts.push("Custom design");
 
-      const productData: Stripe.Checkout.SessionCreateParams.LineItem.PriceData.ProductData = {
-        name: item.productName || "Custom Product",
-        description: descParts.length ? descParts.join(" • ") : undefined,
-      };
-
-      // Add the design image as Stripe product image if available
-      if (c?.designImageUrl) {
-        productData.images = [c.designImageUrl];
-      }
-
       lineItems.push({
         price_data: {
           currency: "inr",
           unit_amount: Math.round(price * 100),
-          product_data: productData,
+          product_data: {
+            name: item.productName || "Custom Product",
+            description: descParts.length ? descParts.join(" • ") : undefined,
+            images: c?.designImageUrl ? [c.designImageUrl] : undefined,
+          },
         },
         quantity: item.quantity || 1,
       });
-    }
 
-    if (lineItems.length === 0) {
-      return res.status(400).json({ success: false, message: "No valid items to checkout" });
-    }
-
-    // Build Stripe metadata using individual per-item keys.
-    // Stripe limit: 50 keys, each value max 500 chars.
-    // Using item_N_* keys avoids the 500-char JSON truncation problem.
-    const sessionMetadata: Record<string, string> = {
-      source: "cart_checkout",
-      userId: (req as any).user?.id || "",
-      item_count: String(cartItems.length),
-    };
-
-    cartItems.forEach((item, idx) => {
-      const c = item.customization;
+      // 2. Build metadata for THIS valid item
+      const idx = validItemCount;
       sessionMetadata[`item_${idx}_pid`] = item.productId;
       if (c?.designImageUrl) sessionMetadata[`item_${idx}_design`] = c.designImageUrl.substring(0, 500);
       if (c?.phoneModel) sessionMetadata[`item_${idx}_phoneModel`] = c.phoneModel;
@@ -196,9 +182,21 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       if (c?.shirtSize) sessionMetadata[`item_${idx}_shirtSize`] = c.shirtSize;
       if (c?.shirtColor) sessionMetadata[`item_${idx}_shirtColor`] = c.shirtColor;
       if (c?.hasCustomDesign) sessionMetadata[`item_${idx}_customDesign`] = "true";
-    });
 
-    console.log("📝 Cart session metadata:", sessionMetadata);
+      // 3. Collect design elements for THIS valid item
+      if (c?.designElements && Array.isArray(c.designElements) && c.designElements.length > 0) {
+        allDesignElements.push({ itemIndex: idx, elements: c.designElements });
+      }
+
+      validItemCount++;
+    }
+
+    if (lineItems.length === 0) {
+      return res.status(400).json({ success: false, message: "No valid items to checkout" });
+    }
+
+    sessionMetadata.item_count = String(validItemCount);
+    console.log(`📝 Cart session metadata for ${validItemCount} items:`, sessionMetadata);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -211,21 +209,12 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
 
     console.log("✅ Cart Stripe session created:", session.id);
 
-    // Collect all design elements from all cart items, keyed by index
-    const allDesignElements: any[] = [];
-    cartItems.forEach((item, idx) => {
-      const elems = item.customization?.designElements;
-      if (elems && Array.isArray(elems) && elems.length > 0) {
-        allDesignElements.push({ itemIndex: idx, elements: elems });
-      }
-    });
-
     if (allDesignElements.length > 0) {
       await PendingDesign.create({
         stripe_session_id: session.id,
         design_elements: allDesignElements,
       });
-      console.log(`📐 Saved design elements for ${allDesignElements.length} cart item(s), session ${session.id}`);
+      console.log(`📐 Saved designs for ${allDesignElements.length} item(s), session ${session.id}`);
     }
 
     res.json({ success: true, url: session.url });
@@ -244,14 +233,22 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
   const sig = req.headers["stripe-signature"] as string;
 
   let event;
+  const bodySize = req.body ? Math.round(req.body.length / 1024) : 0;
+  console.log(`📥 Incoming Webhook Request — Size: ${bodySize} KB`);
+
   try {
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      throw new Error("STRIPE_WEBHOOK_SECRET is NOT set!");
+    }
+
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET!
+      process.env.STRIPE_WEBHOOK_SECRET
     );
+    console.log("✅ Webhook signature verified. Type:", event.type);
   } catch (err: any) {
-    console.error("⚠️ Webhook signature verification failed:", err.message);
+    console.error("❌ Webhook verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -259,147 +256,87 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
     const session: any = event.data.object;
     const metadata = session.metadata || {};
 
-    console.log("🌟 Webhook received, session:", session.id);
-    console.log("📝 Metadata source:", metadata.source || "buy_now");
+    console.log("🌟 Processing Session:", session.id);
+    console.log("📝 Source:", metadata.source || "buy_now");
+    console.log("📝 UserID:", metadata.userId || "N/A");
 
     try {
-      // Fetch Stripe line items (product name, qty, paid amount per item)
       const stripeLineItems = await stripe.checkout.sessions.listLineItems(session.id);
+      let orderItems: any[] = [];
 
-      let orderItems: any[];
-
-      // ────────────────────────────────────────────────────────────────
-      // CASE A: Cart checkout — metadata has source="cart_checkout"
-      //         and per-item keys: item_N_pid, item_N_design, item_N_phoneModel, …
-      // ────────────────────────────────────────────────────────────────
+      // CASE A: Cart Checkout
       if (metadata.source === "cart_checkout") {
-        console.log("🛒 Handling cart checkout, items:", stripeLineItems.data.length);
-
+        console.log("🛒 Processing cart checkout items:", stripeLineItems.data.length);
         orderItems = stripeLineItems.data.map((stripeItem, idx) => {
-          const pid = metadata[`item_${idx}_pid`] || null;
-          const designUrl = metadata[`item_${idx}_design`] || null;
-          const phoneModel = metadata[`item_${idx}_phoneModel`] || null;
-          const caseColor = metadata[`item_${idx}_caseColor`] || null;
-          const shirtType = metadata[`item_${idx}_shirtType`] || null;
-          const shirtSize = metadata[`item_${idx}_shirtSize`] || null;
-          const shirtColor = metadata[`item_${idx}_shirtColor`] || null;
-          const isCustom = metadata[`item_${idx}_customDesign`] === "true";
-
-          console.log(`  Item ${idx}: pid=${pid}, design=${designUrl?.substring(0, 60) || "none"}`);
-
-          const customizationDetails: Record<string, any> = {};
+          const pid = metadata[`item_${idx}_pid`];
+          const customizationDetails: any = {};
           if (pid) customizationDetails.productId = pid;
-          if (phoneModel) customizationDetails.phoneModel = phoneModel;
-          if (caseColor) customizationDetails.caseColor = caseColor;
-          if (shirtType) customizationDetails.shirtType = shirtType;
-          if (shirtSize) customizationDetails.shirtSize = shirtSize;
-          if (shirtColor) customizationDetails.shirtColor = shirtColor;
-          if (isCustom) customizationDetails.isCustomDesign = true;
+          if (metadata[`item_${idx}_phoneModel`]) customizationDetails.phoneModel = metadata[`item_${idx}_phoneModel`];
+          if (metadata[`item_${idx}_caseColor`]) customizationDetails.caseColor = metadata[`item_${idx}_caseColor`];
+          if (metadata[`item_${idx}_shirtType`]) customizationDetails.shirtType = metadata[`item_${idx}_shirtType`];
+          if (metadata[`item_${idx}_shirtSize`]) customizationDetails.shirtSize = metadata[`item_${idx}_shirtSize`];
+          if (metadata[`item_${idx}_shirtColor`]) customizationDetails.shirtColor = metadata[`item_${idx}_shirtColor`];
+          if (metadata[`item_${idx}_customDesign`] === "true") customizationDetails.isCustomDesign = true;
 
           return {
             product_name: stripeItem.description,
             quantity: stripeItem.quantity ?? 1,
             unit_price: (stripeItem.amount_total ?? 0) / 100,
-            design_image: designUrl,
-            customization_details: Object.keys(customizationDetails).length > 0
-              ? customizationDetails
-              : undefined,
+            design_image: metadata[`item_${idx}_design`] || null,
+            customization_details: Object.keys(customizationDetails).length > 0 ? customizationDetails : undefined,
           };
         });
 
-        // Decrease stock for each product
+        // Stock update
         for (const [idx] of stripeLineItems.data.entries()) {
           const pid = metadata[`item_${idx}_pid`];
-          if (pid) {
-            await Product.findByIdAndUpdate(pid, { $inc: { stock: -1 } });
-          }
+          if (pid) await Product.findByIdAndUpdate(pid, { $inc: { stock: -1 } });
         }
       }
-      // ────────────────────────────────────────────────────────────────
-      // CASE B: Single-product "Buy Now" from customizer
-      //         metadata: { productId, designImage, phoneModel, caseColor, … }
-      // ────────────────────────────────────────────────────────────────
+      // CASE B: Buy Now
       else {
-        const {
-          productId,
-          designImage,
-          design_image,
-          phoneModel,
-          caseColor,
-          shirtType,
-          size,
-          color,
-          customDesign,
-        } = metadata;
+        const productId = metadata.productId;
+        console.log("🎨 Processing Buy Now for product:", productId);
 
-        console.log("🎨 Handling Buy Now checkout for product:", productId);
+        const customizationDetails: any = {};
+        if (metadata.phoneModel) customizationDetails.phoneModel = metadata.phoneModel;
+        if (metadata.caseColor) customizationDetails.caseColor = metadata.caseColor;
+        if (metadata.shirtType) customizationDetails.shirtType = metadata.shirtType;
+        if (metadata.size) customizationDetails.size = metadata.size;
+        if (metadata.color) customizationDetails.color = metadata.color;
+        if (metadata.customDesign === "true" || metadata.customDesign === true) customizationDetails.isCustomDesign = true;
 
-        const designUrl = designImage || design_image || null;
-
-        const customizationDetails: Record<string, any> = {};
-        if (phoneModel) customizationDetails.phoneModel = phoneModel;
-        if (caseColor) customizationDetails.caseColor = caseColor;
-        if (shirtType) customizationDetails.shirtType = shirtType;
-        if (size) customizationDetails.size = size;
-        if (color) customizationDetails.color = color;
-        if (customDesign === "true" || customDesign === true)
-          customizationDetails.isCustomDesign = true;
-
-        // Decrease stock
         if (productId) {
           await Product.findByIdAndUpdate(productId, { $inc: { stock: -1 } });
         }
 
-        // Use line items for accurate names; fallback to product lookup
-        if (stripeLineItems.data.length > 0) {
-          orderItems = stripeLineItems.data.map((stripeItem) => ({
-            product_name: stripeItem.description,
-            quantity: stripeItem.quantity ?? 1,
-            unit_price: (stripeItem.amount_total ?? 0) / 100,
-            design_image: designUrl,
-            customization_details: Object.keys(customizationDetails).length > 0
-              ? customizationDetails
-              : undefined,
-          }));
-        } else {
-          // Fallback: try product name from DB
-          const product = productId ? await Product.findById(productId) : null;
-          orderItems = [{
-            product_name: product?.name ?? "Custom Product",
-            quantity: 1,
-            unit_price: session.amount_total / 100,
-            design_image: designUrl,
-            customization_details: Object.keys(customizationDetails).length > 0
-              ? customizationDetails
-              : undefined,
-          }];
-        }
+        const designUrl = metadata.designImage || metadata.design_image || null;
+
+        orderItems = stripeLineItems.data.map(item => ({
+          product_name: item.description,
+          quantity: item.quantity ?? 1,
+          unit_price: (item.amount_total ?? 0) / 100,
+          design_image: designUrl,
+          customization_details: Object.keys(customizationDetails).length > 0 ? customizationDetails : undefined,
+        }));
       }
 
-      // ── Retrieve saved design elements from PendingDesign ──
+      // Attach design elements
       const pendingDesign = await PendingDesign.findOne({ stripe_session_id: session.id });
-      if (pendingDesign && pendingDesign.design_elements?.length > 0) {
+      if (pendingDesign) {
+        console.log("📐 Found pending design elements");
         if (metadata.source === "cart_checkout") {
-          // Cart: design_elements is [{itemIndex, elements}, ...]
           for (const entry of pendingDesign.design_elements as any[]) {
-            const idx = entry.itemIndex;
-            if (orderItems[idx]) {
-              orderItems[idx].design_elements = entry.elements;
-            }
+            if (orderItems[entry.itemIndex]) orderItems[entry.itemIndex].design_elements = entry.elements;
           }
-        } else {
-          // Buy Now: design_elements is the flat array of elements
-          if (orderItems.length > 0) {
-            orderItems[0].design_elements = pendingDesign.design_elements;
-          }
+        } else if (orderItems.length > 0) {
+          orderItems[0].design_elements = pendingDesign.design_elements;
         }
-        // Clean up
         await PendingDesign.deleteOne({ _id: pendingDesign._id });
-        console.log("📐 Design elements attached to order and pending record cleaned up");
       }
 
-      // Save the order
-      await Order.create({
+      // Create Order
+      const newOrder = await Order.create({
         stripe_session_id: session.id,
         customer_email: session.customer_details?.email,
         total_amount: session.amount_total / 100,
@@ -407,44 +344,48 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
         payment_status: session.payment_status,
         order_items: orderItems,
       });
+      console.log("✅ Order created ID:", newOrder._id);
 
-      console.log(`✅ Order saved — ${orderItems.length} item(s), email: ${session.customer_details?.email}`);
-
-      // ── Send Order Confirmation Email ──
+      // Send Email
       const customerEmail = session.customer_details?.email;
       if (customerEmail) {
         try {
+          console.log(`📧 Sending order confirmation email to: ${customerEmail}`);
           await sendOrderConfirmationEmail({
             email: customerEmail,
-            orderId: session.id.slice(-10).toUpperCase(),
+            orderId: newOrder._id.toString().slice(-8).toUpperCase(),
             productName: orderItems.map((i: any) => i.product_name).join(", "),
             totalAmount: session.amount_total,
             currency: session.currency,
             designPreview: orderItems[0]?.design_image,
             shippingDetails: session.shipping_details || session.customer_details,
           });
-          console.log(`📧 Confirmation email sent to: ${customerEmail}`);
-        } catch (emailErr) {
-          console.error("⚠️ Order email failed to send, but order was saved:", emailErr);
+          console.log("✅ Email sent successfully");
+        } catch (emailErr: any) {
+          console.error("❌ Email failed:", emailErr.message);
         }
       }
 
-      // ── NEW: Clear the user's cart if this was a cart checkout ──
+      // Clear Cart
       if (metadata.source === "cart_checkout" && metadata.userId) {
-        await Cart.findOneAndUpdate(
+        console.log(`🧹 Clearing cart for user: ${metadata.userId}`);
+        const cartClear = await Cart.findOneAndUpdate(
           { user: metadata.userId },
           { $set: { cartItems: [] } }
         );
-        console.log(`🧹 Cart cleared for user: ${metadata.userId}`);
+        if (cartClear) console.log("✅ Cart cleared");
+        else console.warn("⚠️ Cart not found for user ID to clear");
       }
 
-    } catch (err) {
-      console.error("❌ Failed to save order:", err);
+    } catch (err: any) {
+      console.error("❌ Webhook internal processing error:", err.message);
+      console.error(err);
     }
   }
 
   res.status(200).send("Webhook processed");
 };
+
 // export const stripeWebhookHandler = async (req: any, res: Response) => {
 //   try {
 //     const event = req.body;
