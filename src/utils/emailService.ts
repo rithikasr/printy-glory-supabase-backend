@@ -1,16 +1,14 @@
 import nodemailer from 'nodemailer';
 
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+    host: process.env.SMTP_HOST || 'smtp.resend.com',
     port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_PORT === '465',
+    secure: false, // Port 587 uses STARTTLS
     auth: {
-        user: process.env.SMTP_USER,
+        user: process.env.SMTP_USER || 'resend',
         pass: process.env.SMTP_PASS,
     },
-    // Removed family: 4 and IPv6-specific hacks as SendGrid/Port 587 is more reliable
     connectionTimeout: 20000,
-    greetingTimeout: 15000,
 });
 
 /**
