@@ -1,21 +1,39 @@
 import nodemailer from 'nodemailer';
 
-const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: smtpPort,
-    secure: smtpPort === 465, // true for 465 (SMTPS), false for 587 (STARTTLS)
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_PORT === '465',
     auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
     },
-    // Force IPv4 as Render often has trouble with IPv6 to Gmail
-    // @ts-ignore
-    family: 4,
-    connectionTimeout: 20000, // 20 seconds
+    // Removed family: 4 and IPv6-specific hacks as SendGrid/Port 587 is more reliable
+    connectionTimeout: 20000,
     greetingTimeout: 15000,
-} as any);
+});
+
+/**
+ * Generic function to send simple text/html emails
+ */
+export const sendEmail = async (to: string, subject: string, message: string) => {
+    try {
+        const mailOptions = {
+            from: `"${process.env.FROM_NAME || 'Printy Glory'}" <${process.env.FROM_EMAIL}>`,
+            to,
+            subject,
+            text: message,
+            html: message.replace(/\n/g, '<br/>'), // Basic conversion
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`✅ Email sent to ${to}:`, info.messageId);
+        return info;
+    } catch (error) {
+        console.error(`❌ Error sending email to ${to}:`, error);
+        throw error;
+    }
+};
 
 export const sendOrderConfirmationEmail = async (orderData: {
     email: string;

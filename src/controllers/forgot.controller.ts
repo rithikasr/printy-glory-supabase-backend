@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import User from "../models/user.model";
 import ResetToken from "../models/resetToken.model";
-import { sendEmail } from "../utils/sendEmail";
+import { sendEmail } from "../utils/emailService";
 
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
