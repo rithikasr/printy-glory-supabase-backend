@@ -1,9 +1,11 @@
 import nodemailer from 'nodemailer';
 
+const smtpPort = parseInt(process.env.SMTP_PORT || '587');
+
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false, // true for 465, false for other ports
+    port: smtpPort,
+    secure: smtpPort === 465, // true for 465 (SMTPS), false for 587 (STARTTLS)
     auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -11,7 +13,8 @@ const transporter = nodemailer.createTransport({
     // Force IPv4 as Render often has trouble with IPv6 to Gmail
     // @ts-ignore
     family: 4,
-    connectionTimeout: 10000,
+    connectionTimeout: 20000, // 20 seconds
+    greetingTimeout: 15000,
 } as any);
 
 export const sendOrderConfirmationEmail = async (orderData: {
