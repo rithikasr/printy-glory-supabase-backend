@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import User from "../models/user.model";
 import ResetToken from "../models/resetToken.model";
-import { sendEmail } from "../utils/emailService";
+import { sendOtpEmail } from "../utils/emailService";
 
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
@@ -40,11 +40,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     await token.save();
 
-    await sendEmail(
-      email,
-      "Your OTP for Password Reset",
-      `Your OTP is ${otp}. It expires in 5 minutes.`
-    );
+    await sendOtpEmail(email, otp);
 
     return res.json({ success: true, message: "OTP sent to email" });
 
