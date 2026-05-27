@@ -53,6 +53,17 @@ connectDB().then(() => {
   });
 });
 
+
+// Global error handling middleware
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("SERVER ERROR STACK:", err);
+  res.status(500).json({ 
+    success: false, 
+    message: err instanceof Error ? err.message : "Internal Server Error",
+    error: err
+  });
+});
+
 export default app;
 
 // import * as dotenv from "dotenv";

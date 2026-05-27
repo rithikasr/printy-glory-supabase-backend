@@ -8,7 +8,8 @@ const JWT_EXPIRES_IN: string | any = `${process.env.JWT_EXPIRES_IN}` || "7d";
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { name, email, password } = req.body;
+    let { name, email, password } = req.body;
+    email = email.toLowerCase();
 
     // Check user exists
     const existing = await User.findOne({ email });
@@ -38,7 +39,8 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
+    email = email.toLowerCase();
 
     const user = await User.findOne({ email });
     if (!user)
@@ -106,8 +108,9 @@ export const getMe = async (req: Request, res: Response) => {
  */
 export const makeAdmin = async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    let { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required" });
+    email = email.toLowerCase();
 
     const user = await User.findOneAndUpdate(
       { email },

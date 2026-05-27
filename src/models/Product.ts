@@ -7,7 +7,8 @@ const productSchema = new mongoose.Schema(
     price: { type: Number, required: true },
     currency: { type: String, default: "inr" },
     image: { type: String }, // optional
-    stock: { type: Number, default: 0 }
+    stock: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true }
   },
   { timestamps: true }
 );

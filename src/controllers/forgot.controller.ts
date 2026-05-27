@@ -5,7 +5,8 @@ import { sendOtpEmail } from "../utils/emailService";
 
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    let { email } = req.body;
+    email = email.toLowerCase();
 
     const user = await User.findOne({ email });
     if (!user)
@@ -53,7 +54,8 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
 export const verifyOtp = async (req: Request, res: Response) => {
   try {
-    const { email, otp } = req.body;
+    let { email, otp } = req.body;
+    email = email.toLowerCase();
 
     const token = await ResetToken.findOne({ email });
     if (!token) return res.status(400).json({ message: "OTP expired" });
@@ -76,7 +78,8 @@ import bcrypt from "bcryptjs";
 
 export const resetPassword = async (req: Request, res: Response) => {
   try {
-    const { email, newPassword } = req.body;
+    let { email, newPassword } = req.body;
+    email = email.toLowerCase();
 
     const user = await User.findOne({ email });
     if (!user)

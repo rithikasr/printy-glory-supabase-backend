@@ -28,12 +28,21 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Product not found" });
     }
 
-    const finalPrice = Number(customPrice) || Number(product.price);
-    if (!finalPrice || finalPrice <= 0) {
+    const finalPriceINR = Number(customPrice) || Number(product.price);
+    if (!finalPriceINR || finalPriceINR <= 0) {
       return res.status(400).json({ success: false, message: "Invalid price" });
     }
-    if (finalPrice < 50) {
+    if (finalPriceINR < 50) {
       return res.status(400).json({ success: false, message: "Price must be at least ₹50.00" });
+    }
+
+    const reqCurrency = String(req.body.currency || "inr").toLowerCase();
+    const isUSD = reqCurrency === "usd";
+    const currency = isUSD ? "usd" : "inr";
+
+    let unitAmount = Math.round(finalPriceINR * 100);
+    if (isUSD) {
+      unitAmount = Math.round((finalPriceINR / 80) * 100);
     }
 
     let productName = product.name;
@@ -60,8 +69,8 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
       line_items: [
         {
           price_data: {
-            currency: "inr",
-            unit_amount: Math.round(finalPrice * 100),
+            currency: currency,
+            unit_amount: unitAmount,
             product_data: {
               name: productName,
               description: customMetadata?.size ? `Size: ${customMetadata.size}` : undefined,
@@ -133,6 +142,10 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       return res.status(500).json({ success: false, message: "Payment system not configured" });
     }
 
+    const reqCurrency = String(req.body.currency || "inr").toLowerCase();
+    const isUSD = reqCurrency === "usd";
+    const currency = isUSD ? "usd" : "inr";
+
     // Build Stripe line items and metadata simultaneously to ensure index alignment
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
     const sessionMetadata: Record<string, string> = {
@@ -143,10 +156,15 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
     let validItemCount = 0;
 
     for (const item of cartItems) {
-      const price = Number(item.price);
-      if (!price || price < 50) {
-        console.warn(`⚠️ Skipping item ${item.productId} — invalid price (${price})`);
+      const priceINR = Number(item.price);
+      if (!priceINR || priceINR < 50) {
+        console.warn(`⚠️ Skipping item ${item.productId} — invalid price (${priceINR})`);
         continue;
+      }
+
+      let unitAmount = Math.round(priceINR * 100);
+      if (isUSD) {
+        unitAmount = Math.round((priceINR / 80) * 100);
       }
 
       // 1. Build line item
@@ -161,8 +179,8 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
 
       lineItems.push({
         price_data: {
-          currency: "inr",
-          unit_amount: Math.round(price * 100),
+          currency: currency,
+          unit_amount: unitAmount,
           product_data: {
             name: item.productName || "Custom Product",
             description: descParts.length ? descParts.join(" • ") : undefined,
