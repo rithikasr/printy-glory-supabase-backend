@@ -38,11 +38,17 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
 
     const reqCurrency = String(req.body.currency || "inr").toLowerCase();
     const isUSD = reqCurrency === "usd";
-    const currency = isUSD ? "usd" : "inr";
+    const isJPY = reqCurrency === "jpy";
+    const currency = isUSD ? "usd" : isJPY ? "jpy" : "inr";
 
     let unitAmount = Math.round(finalPriceINR * 100);
     if (isUSD) {
       unitAmount = Math.round((finalPriceINR / 80) * 100);
+    } else if (isJPY) {
+      unitAmount = Math.round(finalPriceINR * 1.8);
+      if (unitAmount < 50) {
+        return res.status(400).json({ success: false, message: "Price must be at least ¥50" });
+      }
     }
 
     let productName = product.name;
@@ -129,6 +135,9 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
           shirtType?: string;
           shirtSize?: string;
           shirtColor?: string;
+          bottleType?: string;
+          bottleColor?: string;
+          bottleSize?: string;
           hasCustomDesign?: boolean;
         } | null;
       }[];
@@ -144,7 +153,8 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
 
     const reqCurrency = String(req.body.currency || "inr").toLowerCase();
     const isUSD = reqCurrency === "usd";
-    const currency = isUSD ? "usd" : "inr";
+    const isJPY = reqCurrency === "jpy";
+    const currency = isUSD ? "usd" : isJPY ? "jpy" : "inr";
 
     // Build Stripe line items and metadata simultaneously to ensure index alignment
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
@@ -165,6 +175,8 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       let unitAmount = Math.round(priceINR * 100);
       if (isUSD) {
         unitAmount = Math.round((priceINR / 80) * 100);
+      } else if (isJPY) {
+        unitAmount = Math.round(priceINR * 1.8);
       }
 
       // 1. Build line item
@@ -175,6 +187,9 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       if (c?.shirtType) descParts.push(`Style: ${c.shirtType}`);
       if (c?.shirtSize) descParts.push(`Size: ${c.shirtSize}`);
       if (c?.shirtColor) descParts.push(`Colour: ${c.shirtColor}`);
+      if (c?.bottleType) descParts.push(`Type: ${c.bottleType}`);
+      if (c?.bottleSize) descParts.push(`Size: ${c.bottleSize}`);
+      if (c?.bottleColor) descParts.push(`Colour: ${c.bottleColor}`);
       if (c?.hasCustomDesign) descParts.push("Custom design");
 
       lineItems.push({
@@ -199,6 +214,9 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       if (c?.shirtType) sessionMetadata[`item_${idx}_shirtType`] = c.shirtType;
       if (c?.shirtSize) sessionMetadata[`item_${idx}_shirtSize`] = c.shirtSize;
       if (c?.shirtColor) sessionMetadata[`item_${idx}_shirtColor`] = c.shirtColor;
+      if (c?.bottleType) sessionMetadata[`item_${idx}_bottleType`] = c.bottleType;
+      if (c?.bottleColor) sessionMetadata[`item_${idx}_bottleColor`] = c.bottleColor;
+      if (c?.bottleSize) sessionMetadata[`item_${idx}_bottleSize`] = c.bottleSize;
       if (c?.hasCustomDesign) sessionMetadata[`item_${idx}_customDesign`] = "true";
 
       // 3. Collect design elements for THIS valid item
@@ -221,8 +239,8 @@ export const createCartCheckoutSession = async (req: Request, res: Response) => 
       payment_method_types: ["card"],
       line_items: lineItems,
       metadata: sessionMetadata,
-      success_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/success`,
-      cancel_url: `${process.env.FRONTEND_URL || "http://localhost:5173"}/cart`,
+      success_url: `${process.env.FRONTEND_URL || "http://localhost:8080"}/success`,
+      cancel_url: `${process.env.FRONTEND_URL || "http://localhost:8080"}/cart`,
     });
 
     console.log("✅ Cart Stripe session created:", session.id);
@@ -273,6 +291,7 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
   if (event.type === "checkout.session.completed") {
     const session: any = event.data.object;
     const metadata = session.metadata || {};
+    const isZeroDecimal = ["jpy"].includes(session.currency?.toLowerCase());
 
     console.log("🌟 Processing Session:", session.id);
     console.log("📝 Source:", metadata.source || "buy_now");
@@ -294,12 +313,15 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
           if (metadata[`item_${idx}_shirtType`]) customizationDetails.shirtType = metadata[`item_${idx}_shirtType`];
           if (metadata[`item_${idx}_shirtSize`]) customizationDetails.shirtSize = metadata[`item_${idx}_shirtSize`];
           if (metadata[`item_${idx}_shirtColor`]) customizationDetails.shirtColor = metadata[`item_${idx}_shirtColor`];
+          if (metadata[`item_${idx}_bottleType`]) customizationDetails.bottleType = metadata[`item_${idx}_bottleType`];
+          if (metadata[`item_${idx}_bottleColor`]) customizationDetails.bottleColor = metadata[`item_${idx}_bottleColor`];
+          if (metadata[`item_${idx}_bottleSize`]) customizationDetails.bottleSize = metadata[`item_${idx}_bottleSize`];
           if (metadata[`item_${idx}_customDesign`] === "true") customizationDetails.isCustomDesign = true;
 
           return {
             product_name: stripeItem.description,
             quantity: stripeItem.quantity ?? 1,
-            unit_price: (stripeItem.amount_total ?? 0) / 100,
+            unit_price: isZeroDecimal ? (stripeItem.amount_total ?? 0) : (stripeItem.amount_total ?? 0) / 100,
             design_image: metadata[`item_${idx}_design`] || null,
             customization_details: Object.keys(customizationDetails).length > 0 ? customizationDetails : undefined,
           };
@@ -322,6 +344,9 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
         if (metadata.shirtType) customizationDetails.shirtType = metadata.shirtType;
         if (metadata.size) customizationDetails.size = metadata.size;
         if (metadata.color) customizationDetails.color = metadata.color;
+        if (metadata.bottleType) customizationDetails.bottleType = metadata.bottleType;
+        if (metadata.bottleColor) customizationDetails.bottleColor = metadata.bottleColor;
+        if (metadata.bottleSize) customizationDetails.bottleSize = metadata.bottleSize;
         if (metadata.customDesign === "true" || metadata.customDesign === true) customizationDetails.isCustomDesign = true;
 
         if (productId) {
@@ -333,7 +358,7 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
         orderItems = stripeLineItems.data.map(item => ({
           product_name: item.description,
           quantity: item.quantity ?? 1,
-          unit_price: (item.amount_total ?? 0) / 100,
+          unit_price: isZeroDecimal ? (item.amount_total ?? 0) : (item.amount_total ?? 0) / 100,
           design_image: designUrl,
           customization_details: Object.keys(customizationDetails).length > 0 ? customizationDetails : undefined,
         }));
@@ -357,7 +382,7 @@ export const stripeWebhookHandler = async (req: Request, res: Response) => {
       const newOrder = await Order.create({
         stripe_session_id: session.id,
         customer_email: session.customer_details?.email,
-        total_amount: session.amount_total / 100,
+        total_amount: isZeroDecimal ? session.amount_total : session.amount_total / 100,
         currency: session.currency,
         payment_status: session.payment_status,
         order_items: orderItems,

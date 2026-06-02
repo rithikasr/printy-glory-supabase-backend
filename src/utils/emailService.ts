@@ -1,44 +1,85 @@
-/**
- * RESEND API INTEGRATION (HTTPS)
- * We use the REST API instead of SMTP because cloud providers like Render 
- * often block SMTP ports (587/465), leading to ETIMEDOUT.
- * HTTPS (Port 443) is never blocked.
- */
+import nodemailer from 'nodemailer';
 
-const RESEND_API_KEY = process.env.SMTP_PASS; // We reuse the pass field as the API key
-const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+
+const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465, // true for 465, false for other ports
+    auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+    },
+    connectionTimeout: 20000,
+});
+
 const FROM_NAME = process.env.FROM_NAME || 'Printy Glory';
 
+const shouldUseResend = (): boolean => {
+    const key = process.env.RESEND_API_KEY || SMTP_PASS;
+    return !!key && key.startsWith('re_');
+};
+
+const getResendApiKey = (): string => {
+    return process.env.RESEND_API_KEY || SMTP_PASS || '';
+};
+
+const getFromEmail = (): string => {
+    if (shouldUseResend()) {
+        return process.env.FROM_EMAIL || 'onboarding@resend.dev';
+    }
+    return process.env.FROM_EMAIL || SMTP_USER || 'no-reply@printyglory.com';
+};
+
 /**
- * Generic function to send simple text/html emails via Resend API
+ * Generic function to send simple text/html emails
  */
 export const sendEmail = async (to: string, subject: string, message: string) => {
     try {
-        console.log(`📧 Sending API email to: ${to}`);
+        const fromEmail = getFromEmail();
 
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-                to: [to],
-                subject: subject,
-                html: message.replace(/\n/g, '<br/>'),
+        if (shouldUseResend()) {
+            console.log(`📧 Sending API email via Resend to: ${to}`);
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${getResendApiKey()}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from: `"${FROM_NAME}" <${fromEmail}>`,
+                    to: [to],
+                    subject: subject,
+                    html: message.replace(/\n/g, '<br/>'),
+                    text: message,
+                }),
+            });
+
+            const data: any = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to send email via API');
+            }
+
+            console.log(`✅ Email sent via Resend API to ${to}:`, data.id);
+            return data;
+        } else {
+            console.log(`📧 Sending email via SMTP to: ${to}`);
+            const mailOptions = {
+                from: `"${FROM_NAME}" <${fromEmail}>`,
+                to,
+                subject,
                 text: message,
-            }),
-        });
+                html: message.replace(/\n/g, '<br/>'),
+            };
 
-        const data: any = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || 'Failed to send email via API');
+            const info = await transporter.sendMail(mailOptions);
+            console.log(`✅ Email sent via SMTP to ${to}:`, info.messageId);
+            return info;
         }
-
-        console.log(`✅ Email sent via Resend API to ${to}:`, data.id);
-        return data;
     } catch (error) {
         console.error(`❌ Error sending email to ${to}:`, error);
         throw error;
@@ -94,37 +135,52 @@ export const sendOtpEmail = async (to: string, otp: string) => {
     `;
 
     try {
-        console.log(`📧 Sending OTP email to: ${to}`);
+        const fromEmail = getFromEmail();
 
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-                to: [to],
+        if (shouldUseResend()) {
+            console.log(`📧 Sending OTP API email via Resend to: ${to}`);
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${getResendApiKey()}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from: `"${FROM_NAME}" <${fromEmail}>`,
+                    to: [to],
+                    subject: '🔐 Your Password Reset Code — Printy Glory',
+                    html: htmlContent,
+                    text: `Your OTP for password reset is: ${otp}. It expires in 5 minutes. If you didn't request this, please ignore this email.`,
+                }),
+            });
+
+            const data: any = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to send OTP email via API');
+            }
+
+            console.log(`✅ OTP email sent via Resend API to ${to}:`, data.id);
+            return data;
+        } else {
+            console.log(`📧 Sending OTP email via SMTP to: ${to}`);
+            const mailOptions = {
+                from: `"${FROM_NAME}" <${fromEmail}>`,
+                to,
                 subject: '🔐 Your Password Reset Code — Printy Glory',
                 html: htmlContent,
                 text: `Your OTP for password reset is: ${otp}. It expires in 5 minutes. If you didn't request this, please ignore this email.`,
-            }),
-        });
+            };
 
-        const data: any = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || 'Failed to send OTP email via API');
+            const info = await transporter.sendMail(mailOptions);
+            console.log(`✅ OTP email sent via SMTP to ${to}:`, info.messageId);
+            return info;
         }
-
-        console.log(`✅ OTP email sent via Resend API to ${to}:`, data.id);
-        return data;
     } catch (error) {
         console.error(`❌ Error sending OTP email to ${to}:`, error);
         throw error;
     }
 };
-
 
 export const sendOrderConfirmationEmail = async (orderData: {
     email: string;
@@ -136,6 +192,8 @@ export const sendOrderConfirmationEmail = async (orderData: {
     shippingDetails?: any;
 }) => {
     const { email, orderId, productName, totalAmount, currency, designPreview, shippingDetails } = orderData;
+    const isZeroDecimal = ["jpy"].includes(currency.toLowerCase());
+    const formattedAmount = isZeroDecimal ? totalAmount.toLocaleString() : (totalAmount / 100).toFixed(2);
 
     const htmlContent = `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
@@ -148,7 +206,7 @@ export const sendOrderConfirmationEmail = async (orderData: {
                 <h3 style="margin-top: 0; color: #111827;">Order Summary</h3>
                 <p><strong>Order ID:</strong> #${orderId}</p>
                 <p><strong>Product:</strong> ${productName}</p>
-                <p><strong>Total Paid:</strong> ${currency.toUpperCase()} ${(totalAmount / 100).toFixed(2)}</p>
+                <p><strong>Total Paid:</strong> ${currency.toUpperCase()} ${formattedAmount}</p>
             </div>
 
             ${designPreview ? `
@@ -158,14 +216,21 @@ export const sendOrderConfirmationEmail = async (orderData: {
             </div>
             ` : ''}
 
-            ${shippingDetails ? `
+            ${(shippingDetails && shippingDetails.address) ? `
             <div style="margin-bottom: 20px;">
                 <h3 style="color: #111827;">Shipping To:</h3>
                 <p style="color: #4b5563; line-height: 1.5;">
-                    ${shippingDetails.name}<br/>
-                    ${shippingDetails.address.line1}${shippingDetails.address.line2 ? `, ${shippingDetails.address.line2}` : ''}<br/>
-                    ${shippingDetails.address.city}, ${shippingDetails.address.state} ${shippingDetails.address.postal_code}<br/>
-                    ${shippingDetails.address.country}
+                    ${shippingDetails.name || ''}<br/>
+                    ${shippingDetails.address.line1 || ''}${shippingDetails.address.line2 ? `, ${shippingDetails.address.line2}` : ''}<br/>
+                    ${shippingDetails.address.city || ''}, ${shippingDetails.address.state || ''} ${shippingDetails.address.postal_code || ''}<br/>
+                    ${shippingDetails.address.country || ''}
+                </p>
+            </div>
+            ` : (shippingDetails && shippingDetails.name) ? `
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #111827;">Customer Details:</h3>
+                <p style="color: #4b5563; line-height: 1.5;">
+                    <strong>Name:</strong> ${shippingDetails.name}
                 </p>
             </div>
             ` : ''}
@@ -178,34 +243,62 @@ export const sendOrderConfirmationEmail = async (orderData: {
     `;
 
     try {
-        console.log(`📧 Sending order confirmation API email to: ${email}`);
+        const fromEmail = getFromEmail();
+        const adminEmail = process.env.FROM_EMAIL || SMTP_USER || fromEmail;
+        
+        // Setup BCC for Admin if it's different from the customer email
+        const bccEmails = (adminEmail && adminEmail.toLowerCase() !== email.toLowerCase()) ? [adminEmail] : undefined;
 
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+        if (shouldUseResend()) {
+            console.log(`📧 Sending order confirmation API email via Resend to: ${email}`);
+            const bodyPayload: any = {
+                from: `"${FROM_NAME}" <${fromEmail}>`,
                 to: [email],
                 subject: `Order Confirmed! #${orderId}`,
                 html: htmlContent,
-            }),
-        });
+            };
+            if (bccEmails) {
+                bodyPayload.bcc = bccEmails;
+                console.log(`👥 BCCing admin at: ${bccEmails.join(', ')}`);
+            }
 
-        const data: any = await response.json();
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${getResendApiKey()}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(bodyPayload),
+            });
 
-        if (!response.ok) {
-            throw new Error(data.message || 'Failed to send order email via API');
+            const data: any = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to send order email via API');
+            }
+
+            console.log('✅ Order confirmation email sent via Resend API:', data.id);
+            return data;
+        } else {
+            console.log(`📧 Sending order confirmation email via SMTP to: ${email}`);
+            const mailOptions: any = {
+                from: `"${FROM_NAME}" <${fromEmail}>`,
+                to: email,
+                subject: `Order Confirmed! #${orderId}`,
+                html: htmlContent,
+                text: `Thank you for your order! Order ID: #${orderId}. Product: ${productName}. Total Paid: ${currency.toUpperCase()} ${formattedAmount}`,
+            };
+            if (bccEmails) {
+                mailOptions.bcc = bccEmails.join(', ');
+                console.log(`👥 BCCing admin at: ${bccEmails.join(', ')}`);
+            }
+
+            const info = await transporter.sendMail(mailOptions);
+            console.log('✅ Order confirmation email sent via SMTP:', info.messageId);
+            return info;
         }
-
-        console.log('✅ Order confirmation email sent via Resend API:', data.id);
-        return data;
     } catch (error) {
-        console.error('❌ Resend API Error encountered:');
-        console.error(error);
+        console.error('❌ Error sending order confirmation email:', error);
         throw error;
     }
 };
-

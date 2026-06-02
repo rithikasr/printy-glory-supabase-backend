@@ -26,8 +26,8 @@ router.post("/create-checkout-session", async (req, res) => {
         },
       ],
 
-      success_url: "http://localhost:5173/success",
-      cancel_url: "http://localhost:5173/cancel",
+      success_url: `${process.env.FRONTEND_URL || "http://localhost:8080"}/success`,
+      cancel_url: `${process.env.FRONTEND_URL || "http://localhost:8080"}/cancel`,
 
       metadata: {
         productId: product._id.toString(),

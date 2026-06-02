@@ -68,6 +68,10 @@ export default app;
 
 // import * as dotenv from "dotenv";
 // import { connectDB } from "./config/mongodb";
+// export default app;
+
+// import * as dotenv from "dotenv";
+// import { connectDB } from "./config/mongodb";
 
 // dotenv.config();
 
@@ -164,3 +168,4 @@ export default app;
 // });
 
 // export default app;
+// Touch comment to reload nodemon and read new email service updates.

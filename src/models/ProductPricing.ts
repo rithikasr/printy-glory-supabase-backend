@@ -3,11 +3,11 @@ import mongoose from "mongoose";
 // Product pricing configuration for customizable products
 const productPricingSchema = new mongoose.Schema(
     {
-        // Product type: 'phone-case' or 't-shirt'
+        // Product type: 'phone-case', 't-shirt', or 'water-bottle'
         productType: {
             type: String,
             required: true,
-            enum: ['phone-case', 't-shirt'],
+            enum: ['phone-case', 't-shirt', 'water-bottle'],
             unique: true
         },
 
@@ -29,6 +29,24 @@ const productPricingSchema = new mongoose.Schema(
 
         // T-shirt type pricing (only for t-shirt productType)
         tshirtTypes: [
+            {
+                id: {
+                    type: String,
+                    required: true
+                },
+                name: {
+                    type: String,
+                    required: true
+                },
+                price: {
+                    type: Number,
+                    required: true
+                }
+            }
+        ],
+
+        // Water bottle type pricing (only for water-bottle productType)
+        bottleTypes: [
             {
                 id: {
                     type: String,
