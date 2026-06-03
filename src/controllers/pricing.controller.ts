@@ -53,9 +53,9 @@ export const getPricingByType = async (req: Request, res: Response) => {
 // CREATE or UPDATE phone case pricing (Admin only)
 export const setPhoneCasePricing = async (req: Request, res: Response) => {
     try {
-        const { basePrice } = req.body;
+        const { basePrice, perElementPrice, maxElementsForBasePrice } = req.body;
 
-        if (!basePrice || basePrice < 0) {
+        if (basePrice === undefined || basePrice < 0) {
             return res.status(400).json({
                 success: false,
                 message: "Valid base price is required"
@@ -67,6 +67,8 @@ export const setPhoneCasePricing = async (req: Request, res: Response) => {
             {
                 productType: 'phone-case',
                 basePrice,
+                perElementPrice: perElementPrice || 0,
+                maxElementsForBasePrice: maxElementsForBasePrice || 0,
                 isActive: true
             },
             {
@@ -138,6 +140,55 @@ export const setTShirtPricing = async (req: Request, res: Response) => {
     }
 };
 
+// CREATE or UPDATE water bottle pricing (Admin only)
+export const setWaterBottlePricing = async (req: Request, res: Response) => {
+    try {
+        const { bottleTypes } = req.body;
+
+        if (!bottleTypes || !Array.isArray(bottleTypes) || bottleTypes.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Water bottle types array is required"
+            });
+        }
+
+        // Validate each water bottle type
+        for (const type of bottleTypes) {
+            if (!type.id || !type.name || !type.price || type.price < 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Each water bottle type must have id, name, and valid price"
+                });
+            }
+        }
+
+        const pricing = await ProductPricing.findOneAndUpdate(
+            { productType: 'water-bottle' },
+            {
+                productType: 'water-bottle',
+                bottleTypes,
+                isActive: true
+            },
+            {
+                new: true,
+                upsert: true
+            }
+        );
+
+        res.json({
+            success: true,
+            message: "Water bottle pricing updated successfully",
+            pricing
+        });
+    } catch (error) {
+        console.error("Failed to update water bottle pricing:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to update water bottle pricing"
+        });
+    }
+};
+
 // DELETE pricing configuration (Admin only)
 export const deletePricing = async (req: Request, res: Response) => {
     try {
@@ -174,6 +225,8 @@ export const initializeDefaultPricing = async (req: Request, res: Response) => {
             {
                 productType: 'phone-case',
                 basePrice: 499,
+                perElementPrice: 50, // Default ₹50 per additional element
+                maxElementsForBasePrice: 3, // Default 3 elements included in base price
                 isActive: true
             },
             { upsert: true, new: true }
@@ -191,6 +244,22 @@ export const initializeDefaultPricing = async (req: Request, res: Response) => {
                     { id: 'full-sleeve', name: 'Full Sleeve T-Shirt', price: 699 },
                     { id: 'oversized', name: 'Oversized T-Shirt', price: 749 },
                     { id: 'sweatshirt', name: 'Sweatshirt', price: 999 }
+                ],
+                isActive: true
+            },
+            { upsert: true, new: true }
+        );
+
+        // Water bottle defaults
+        await ProductPricing.findOneAndUpdate(
+            { productType: 'water-bottle' },
+            {
+                productType: 'water-bottle',
+                bottleTypes: [
+                    { id: 'sport-750', name: 'Standard Sport Bottle (750ml)', price: 499 },
+                    { id: 'thermos-500', name: 'Thermos Flask (500ml)', price: 699 },
+                    { id: 'steel-1000', name: 'Stainless Steel Bottle (1000ml)', price: 599 },
+                    { id: 'glass-600', name: 'Glass Bottle with Sleeve (600ml)', price: 399 }
                 ],
                 isActive: true
             },

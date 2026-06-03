@@ -9,6 +9,10 @@ const orderSchema = new mongoose.Schema(
     currency: String,
     payment_status: String,
     order_items: [orderItemSchema],
+    status: { type: String, default: "processing" },
+    approvalStatus: { type: String, enum: ["none", "pending", "approved", "rejected"], default: "none" },
+    approvalImage: String, // Mockup image sent by admin for user approval
+    rejectionReason: String, // Comments from customer if rejected
   },
   { timestamps: true }
 );

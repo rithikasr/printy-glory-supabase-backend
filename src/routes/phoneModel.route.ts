@@ -5,6 +5,7 @@ import {
     updatePhoneModelRequestStatus
 } from "../controllers/phoneModel.controller";
 import { authMiddleware } from "../middleware/auth";
+import { adminMiddleware } from "../middleware/admin";
 
 const router = Router();
 
@@ -12,7 +13,7 @@ const router = Router();
 router.post("/request", createPhoneModelRequest);
 
 // Admin routes - protected
-router.get("/requests", authMiddleware, getAllPhoneModelRequests);
-router.patch("/requests/:id/status", authMiddleware, updatePhoneModelRequestStatus);
+router.get("/requests", authMiddleware, adminMiddleware, getAllPhoneModelRequests);
+router.patch("/requests/:id/status", authMiddleware, adminMiddleware, updatePhoneModelRequestStatus);
 
 export default router;

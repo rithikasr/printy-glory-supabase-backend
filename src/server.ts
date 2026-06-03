@@ -18,10 +18,15 @@ import commonRouter from "./routes/route";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// --------------------- CORS (MUST BE FIRST) ---------------------
+app.use(cors({ origin: "*" }));
+
 // ---------------------- STRIPE WEBHOOK FIRST ----------------------
+// Stripe webhooks need the raw body for signature verification.
+// We set a large limit (50mb) to handle complex checkout sessions.
 app.post(
   "/api/payment/stripe-webhook",
-  express.raw({ type: "application/json" }),
+  express.raw({ type: "application/json", limit: "50mb" }),
   stripeWebhookHandler
 );
 
@@ -35,10 +40,8 @@ app.use((req, res, next) => {
 });
 
 // --------------------- JSON BODY PARSER (AFTER WEBHOOK) ---------------------
-app.use(express.json());
-
-// --------------------- CORS ---------------------
-app.use(cors({ origin: "*" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --------------------- ROUTES ---------------------
 app.use(commonRouter);
@@ -50,7 +53,22 @@ connectDB().then(() => {
   });
 });
 
+
+// Global error handling middleware
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("SERVER ERROR STACK:", err);
+  res.status(500).json({ 
+    success: false, 
+    message: err instanceof Error ? err.message : "Internal Server Error",
+    error: err
+  });
+});
+
 export default app;
+
+// import * as dotenv from "dotenv";
+// import { connectDB } from "./config/mongodb";
+// export default app;
 
 // import * as dotenv from "dotenv";
 // import { connectDB } from "./config/mongodb";
@@ -150,3 +168,4 @@ export default app;
 // });
 
 // export default app;
+// Touch comment to reload nodemon and read new email service updates.

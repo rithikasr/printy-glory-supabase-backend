@@ -35,8 +35,18 @@ export const createProduct = async (req: Request, res: Response) => {
 //   }
 // };
 
-// GET all products
+// GET all active products (for users)
 export const getProducts = async (req: Request, res: Response) => {
+  try {
+    const products = await Product.find({ isActive: true }).sort({ createdAt: -1 });
+    res.json({ success: true, count: products.length, products });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch products" });
+  }
+};
+
+// GET all products (for admin)
+export const adminGetProducts = async (req: Request, res: Response) => {
   try {
     const products = await Product.find().sort({ createdAt: -1 });
     res.json({ success: true, count: products.length, products });
@@ -151,3 +161,19 @@ export const deleteProduct = async (req: Request, res: Response) => {
 //     res.status(500).json({ message: "Failed to delete product" });
 //   }
 // };
+
+
+// Toggle product active status
+export const toggleProductActive = async (req: Request, res: Response) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    product.isActive = !product.isActive;
+    await product.save();
+
+    res.json({ success: true, product });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to toggle product status" });
+  }
+};

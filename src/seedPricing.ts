@@ -41,6 +41,19 @@ const seedPricing = async () => {
         });
         console.log("👕 T-shirt pricing created with", tshirtPricing.tshirtTypes.length, "types");
 
+        // Insert water bottle pricing
+        const bottlePricing = await ProductPricing.create({
+            productType: 'water-bottle',
+            bottleTypes: [
+                { id: 'sport-750', name: 'Standard Sport Bottle (750ml)', price: 499 },
+                { id: 'thermos-500', name: 'Thermos Flask (500ml)', price: 699 },
+                { id: 'steel-1000', name: 'Stainless Steel Bottle (1000ml)', price: 599 },
+                { id: 'glass-600', name: 'Glass Bottle with Sleeve (600ml)', price: 399 }
+            ],
+            isActive: true
+        });
+        console.log("💧 Water bottle pricing created with", bottlePricing.bottleTypes.length, "types");
+
         console.log("\n✅ Pricing data seeded successfully!");
         console.log("\nPhone Case Price: ₹" + phoneCasePricing.basePrice);
         console.log("\nT-Shirt Prices:");

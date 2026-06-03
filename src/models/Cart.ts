@@ -4,13 +4,16 @@ import mongoose from "mongoose";
 const customizationSchema = new mongoose.Schema(
   {
     designImageUrl: { type: String, default: null },  // Cloudinary URL of captured design
+    designElements: { type: [mongoose.Schema.Types.Mixed], default: [] }, // individual elements: [{type, content, x, y, width, height, ...}]
     productType: { type: String, default: null },      // 'phone-case' | 't-shirt'
     phoneModel: { type: String, default: null },       // e.g. 'iPhone 15 Pro Max'
     caseColor: { type: String, default: null },        // hex colour for phone case
     shirtType: { type: String, default: null },        // e.g. 'half-sleeve'
     shirtSize: { type: String, default: null },        // e.g. 'L'
     shirtColor: { type: String, default: null },       // hex colour for t-shirt
-    hasCustomDesign: { type: Boolean, default: false }
+    hasCustomDesign: { type: Boolean, default: false },
+    price: { type: Number, default: null }             // Snapshot of calculated price for custom items
+
   },
   { _id: false }
 );
